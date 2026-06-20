@@ -10,7 +10,7 @@
   'use strict';
   if (window.__xtracleanLoaded) return;
   window.__xtracleanLoaded = true;
-  const VERSION = '1.1.4';
+  const VERSION = '1.2.0';
   console.log('%c[XtraClean] v' + VERSION + ' content script loaded on ' + location.host, 'color:#2dd4bf');
 
   // --- X web app constants ---------------------------------------------------
@@ -551,14 +551,28 @@
     State.source = 'archive';
     const seen = new Map(State.items.map((i) => [i.id, i]));
     let total = 0;
+    // Expand any .zip into its relevant .js entries; pass .js straight through.
+    const entries = [];
     for (const file of fileList) {
       const name = file.name.toLowerCase();
-      let text = await readFileMaybeZip(file, name);
-      if (text == null) continue;
+      if (name.endsWith('.zip')) {
+        logLine(`Reading ${file.name}…`);
+        try {
+          const got = await extractArchiveZip(file);
+          if (!got.length) logLine('No tweets/likes files found inside the .zip.', 'warn');
+          entries.push(...got);
+        } catch (e) {
+          logLine(`Couldn't read ${file.name}: ${e.message}`, 'err');
+        }
+      } else {
+        entries.push({ name, text: await file.text() });
+      }
+    }
+    for (const { name, text } of entries) {
       try {
         const parsed = parseArchiveFile(name, text);
         for (const it of parsed) if (!seen.has(it.id)) { seen.set(it.id, it); total++; }
-        logLine(`Imported ${fmt(parsed.length)} from ${file.name}`, 'ok');
+        logLine(`Imported ${fmt(parsed.length)} from ${name}`, 'ok');
       } catch (e) {
         logLine(e.message, 'err');
       }
@@ -570,13 +584,47 @@
     return total;
   }
 
-  // Supports raw .js files; .zip handled if the page exposes DecompressionStream
-  async function readFileMaybeZip(file, name) {
-    if (name.endsWith('.zip')) {
-      logLine('Please unzip your archive and drop the data/tweets.js & data/like.js files directly.', 'warn');
-      return null;
+  // Dependency-free ZIP reader: pulls the tweets*/like .js entries out of the
+  // raw X data-archive .zip and inflates them. No unzip step needed.
+  async function extractArchiveZip(file) {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    const dv = new DataView(buf.buffer);
+    const want = /(^|\/)(tweets?|like)(-part\d+)?\.js$/i;
+    // locate End Of Central Directory (0x06054b50), scanning from the end
+    let eocd = -1;
+    for (let i = buf.length - 22; i >= 0 && i > buf.length - 22 - 65536; i--) {
+      if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
     }
-    return await file.text();
+    if (eocd < 0) throw new Error('not a valid .zip');
+    let cd = dv.getUint32(eocd + 16, true);
+    const out = [];
+    const td = new TextDecoder('utf-8');
+    while (cd < buf.length && dv.getUint32(cd, true) === 0x02014b50) {
+      const method = dv.getUint16(cd + 10, true);
+      const compSize = dv.getUint32(cd + 20, true);
+      const fnLen = dv.getUint16(cd + 28, true);
+      const extraLen = dv.getUint16(cd + 30, true);
+      const cmtLen = dv.getUint16(cd + 32, true);
+      const lho = dv.getUint32(cd + 42, true);
+      const name = td.decode(buf.subarray(cd + 46, cd + 46 + fnLen));
+      if (want.test(name)) {
+        // local header tells us the true data offset (its own fn/extra lengths)
+        const lfn = dv.getUint16(lho + 26, true);
+        const lex = dv.getUint16(lho + 28, true);
+        const start = lho + 30 + lfn + lex;
+        const comp = buf.subarray(start, start + compSize);
+        const raw = method === 0 ? comp : await inflateRaw(comp);
+        out.push({ name: name.toLowerCase(), text: td.decode(raw) });
+      }
+      cd += 46 + fnLen + extraLen + cmtLen;
+    }
+    return out;
+  }
+
+  async function inflateRaw(u8) {
+    const ds = new DecompressionStream('deflate-raw');
+    const stream = new Blob([u8]).stream().pipeThrough(ds);
+    return new Uint8Array(await new Response(stream).arrayBuffer());
   }
 
   // ===========================================================================
@@ -1199,8 +1247,8 @@
           </div>
         </div>
         <div id="archiveBox" class="hidden" style="margin-top:10px;">
-          <div class="hint">Drop the <b>tweets.js</b> and <b>like.js</b> files from your official X data export (Settings → Your account → Download an archive → <i>data/</i> folder). Reaches <b>every</b> post, beyond the 3,200 limit.</div>
-          <input type="file" id="fileInput" multiple accept=".js,application/javascript" style="margin-top:8px; font-size:11px; color:#9aa6b6;" />
+          <div class="hint">Drop your whole X data-archive <b>.zip</b> here (Settings → Your account → Download an archive) — no unzipping needed. Or drop the <b>tweets.js</b> / <b>like.js</b> files directly. Reaches <b>every</b> post, beyond the 3,200 limit.</div>
+          <input type="file" id="fileInput" multiple accept=".zip,.js,application/javascript,application/zip" style="margin-top:8px; font-size:11px; color:#9aa6b6;" />
         </div>
         <div class="hint" id="poolLine" style="margin-top:8px;"></div>
       </div>
