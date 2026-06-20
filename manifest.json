@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "XtraClean — Bulk Delete X / Twitter Activity",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Bulk-delete your X/Twitter posts, replies, reposts, likes & DMs. 100% local — your data never leaves your browser. Free.",
   "permissions": ["storage", "alarms", "notifications"],
   "host_permissions": [

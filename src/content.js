@@ -10,7 +10,7 @@
   'use strict';
   if (window.__xtracleanLoaded) return;
   window.__xtracleanLoaded = true;
-  const VERSION = '1.5.0';
+  const VERSION = '1.6.0';
   console.log('%c[XtraClean] v' + VERSION + ' content script loaded on ' + location.host, 'color:#2dd4bf');
 
   // --- X web app constants ---------------------------------------------------
@@ -24,6 +24,7 @@
     DeleteTweet: 'VaenaVgh5q5ih7kvyVjgtg',
     UnfavoriteTweet: 'ZYKSe-w7KEslx3JhSIk5LA',
     DeleteRetweet: 'iQtK4dl5hBmXewYZuEOKVw',
+    BookmarksAllDelete: 'Wlmlj2-xzyS1GN3a6cj-mQ',
   };
 
   // Self-healing adapter: a tiny config hosted on our GitHub Pages. If X rotates
@@ -95,7 +96,7 @@
           txt = await resp.text();
           clearTimeout(t);
         } catch (e) { continue; }
-        for (const op of ['DeleteTweet', 'UnfavoriteTweet', 'DeleteRetweet']) {
+        for (const op of ['DeleteTweet', 'UnfavoriteTweet', 'DeleteRetweet', 'BookmarksAllDelete']) {
           if (!found[op]) { const id = extractQueryId(txt, op); if (id) found[op] = id; }
         }
       }
@@ -104,6 +105,7 @@
       DeleteTweet: found.DeleteTweet || QUERY.DeleteTweet,
       UnfavoriteTweet: found.UnfavoriteTweet || QUERY.UnfavoriteTweet,
       DeleteRetweet: found.DeleteRetweet || QUERY.DeleteRetweet,
+      BookmarksAllDelete: found.BookmarksAllDelete || QUERY.BookmarksAllDelete,
     };
     resolvedQueries._discovered = found;
     return resolvedQueries;
@@ -321,6 +323,112 @@
       type: c.type,
       time: c.sort_timestamp ? new Date(parseInt(c.sort_timestamp, 10)).toISOString() : null,
     }));
+  }
+
+  // ===========================================================================
+  // FOOTPRINT ENGINE — the rest of your trail: bookmarks (GraphQL one-shot),
+  // mutes & blocks (stable v1.1 list + destroy).
+  // ===========================================================================
+  const FP = {
+    async getJSON(path) {
+      const ct0 = getCookie('ct0');
+      if (!ct0) throw new Error('NO_AUTH');
+      const r = await fetch(`https://${location.host}${path}`, { credentials: 'include', headers: authHeaders(ct0) });
+      if (!r.ok) throw new Error('HTTP_' + r.status);
+      return r.json();
+    },
+    post(path) {
+      const ct0 = getCookie('ct0');
+      return fetch(`https://${location.host}${path}`, {
+        method: 'POST', credentials: 'include',
+        headers: { ...authHeaders(ct0, false), 'content-type': 'application/x-www-form-urlencoded' }, body: '',
+      });
+    },
+    async listIds(kind) { // kind: 'mutes/users' | 'blocks'
+      let cursor = '-1'; const ids = []; let guard = 0;
+      while (cursor && cursor !== '0' && guard < 200 && !State.abort) {
+        guard++;
+        const j = await this.getJSON(`/i/api/1.1/${kind}/ids.json?stringify_ids=true&count=5000&cursor=${cursor}`);
+        (j.ids || []).forEach((x) => ids.push(String(x)));
+        cursor = j.next_cursor_str || '0';
+      }
+      return ids;
+    },
+    bookmarksAllDelete() {
+      const ct0 = getCookie('ct0');
+      const qid = activeQuery('BookmarksAllDelete');
+      return fetch(`https://${location.host}/i/api/graphql/${qid}/BookmarksAllDelete`, {
+        method: 'POST', credentials: 'include', headers: authHeaders(ct0),
+        body: JSON.stringify({ variables: {}, queryId: qid }),
+      });
+    },
+  };
+
+  async function wipeUsers(kind, label) {
+    if (!getCookie('ct0')) { toast('Log in to X in this tab first.', 'err'); return; }
+    if (!confirm(`Remove ALL ${label}? This can't be undone.`)) return;
+    State.abort = false;
+    toast(`Finding ${label}…`);
+    let ids;
+    try { ids = await FP.listIds(kind); } catch (e) { toast(`Couldn't list ${label} (${e.message}).`, 'err'); return; }
+    if (!ids.length) { toast(`No ${label} found.`, 'ok'); return; }
+    const ep = kind === 'mutes/users' ? 'mutes/users/destroy' : 'blocks/destroy';
+    let done = 0;
+    for (const id of ids) {
+      if (State.abort) break;
+      try {
+        const r = await FP.post(`/i/api/1.1/${ep}.json?user_id=${id}`);
+        if (r.ok || r.status === 404) done++;
+        else if (r.status === 429) { toast('Rate limited — pausing 60s…', 'warn'); await sleep(60000); continue; }
+      } catch (e) {}
+      if (done % 5 === 0) { toast(`${label}: ${fmt(done)}/${fmt(ids.length)}`); renderFootprint(); }
+      await sleep(450);
+    }
+    State.footprint[label] = (State.footprint[label] || 0) + done;
+    toast(`Removed ${fmt(done)} ${label}.`, 'ok');
+    if (done) confetti();
+    renderFootprint();
+  }
+
+  async function clearBookmarks() {
+    if (!getCookie('ct0')) { toast('Log in to X in this tab first.', 'err'); return; }
+    if (!confirm('Delete ALL your bookmarks? This cannot be undone.')) return;
+    toast('Clearing bookmarks…');
+    await ensureAdapter(); await discoverQueryIds();
+    try {
+      const r = await FP.bookmarksAllDelete();
+      let body = null; try { body = await r.json(); } catch (e) {}
+      if (r.ok && body && body.data && !(body.errors && body.errors.length)) {
+        State.footprint.bookmarks = 'all cleared';
+        toast('All bookmarks cleared. 🎉', 'ok'); confetti();
+      } else {
+        const msg = body && body.errors && body.errors.length ? body.errors[0].message : 'HTTP ' + r.status;
+        toast('Bookmark wipe failed: ' + msg, 'err');
+      }
+    } catch (e) { toast('Bookmark wipe error: ' + e.message, 'err'); }
+    renderFootprint();
+  }
+
+  function downloadWipeReport() {
+    const f = State.footprint || {};
+    const lines = [
+      'XtraClean — wipe report',
+      'Account: @' + (State.handle || 'you'),
+      'Generated: ' + new Date().toLocaleString(),
+      '',
+      'Removed via XtraClean (this session):',
+      '· Posts / replies / reposts / likes deleted: ' + fmt(State.progress.done || 0),
+    ];
+    if (f.bookmarks) lines.push('· Bookmarks: ' + f.bookmarks);
+    if (f.mutes) lines.push('· Unmuted accounts: ' + fmt(f.mutes));
+    if (f.blocks) lines.push('· Unblocked accounts: ' + fmt(f.blocks));
+    lines.push('', 'All actions ran locally in your own browser session. No data left your device.');
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `xtraclean-wipe-report-${State.handle || 'x'}-${Date.now()}.txt`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toast('Wipe report saved.', 'ok');
   }
 
   // ===========================================================================
@@ -1418,6 +1526,7 @@
       <button data-view="triage">Triage</button>
       <button data-view="auto">Auto</button>
       <button data-view="dm">DMs</button>
+      <button data-view="fp">More</button>
     </div>
     <div class="body">
       <div class="priv">🔒 100% local. Nothing leaves your browser — no servers, no account.</div>
@@ -1613,6 +1722,26 @@
         </div>
       </div><!-- /view-dm -->
 
+      <!-- ============================ FOOTPRINT VIEW ============================ -->
+      <div class="view" id="view-fp">
+        <div class="sec">
+          <div class="lbl">🧹 Footprint</div>
+          <div class="hint">Clear the rest of your X trail. Runs through X's own endpoints in your session — permanent, can't be undone.</div>
+          <button class="btn" id="fpBookmarks" style="width:100%;margin-top:10px;">🔖 Clear all bookmarks</button>
+          <button class="btn" id="fpMutes" style="width:100%;margin-top:8px;">🔇 Unmute everyone</button>
+          <button class="btn" id="fpBlocks" style="width:100%;margin-top:8px;">🚫 Unblock everyone</button>
+          <div class="row" style="margin-top:8px;justify-content:flex-end;">
+            <button class="btn ghost" id="fpStop" style="flex:0 0 auto;">Stop</button>
+          </div>
+          <div class="hint" id="fpStatus" style="margin-top:6px;"></div>
+        </div>
+        <div class="sec">
+          <div class="lbl">📄 Wipe report</div>
+          <div class="hint">A summary of everything XtraClean removed this session — handy proof you cleaned up.</div>
+          <button class="btn primary" id="fpReport" style="width:100%;margin-top:10px;">⤓ Download wipe report</button>
+        </div>
+      </div><!-- /view-fp -->
+
       <div class="hint" style="text-align:center;margin-top:4px;">XtraClean · free &amp; open · your data stays yours</div>
     </div>
   `;
@@ -1742,6 +1871,13 @@
       const b = $('#triageAI', root); if (b) b.textContent = '🧠 AI';
       if (ok) { toast('AI deep-scan complete.', 'ok'); renderTriage(); }
     };
+
+    // Footprint controls
+    $('#fpBookmarks', root).onclick = () => clearBookmarks();
+    $('#fpMutes', root).onclick = () => wipeUsers('mutes/users', 'mutes');
+    $('#fpBlocks', root).onclick = () => wipeUsers('blocks', 'blocks');
+    $('#fpStop', root).onclick = () => { State.abort = true; toast('Stopping…', 'warn'); };
+    $('#fpReport', root).onclick = () => downloadWipeReport();
   }
 
   function switchView(name) {
@@ -1750,6 +1886,18 @@
     if (name === 'auto') renderAutoClean();
     if (name === 'dm') renderDM();
     if (name === 'triage') renderTriage();
+    if (name === 'fp') renderFootprint();
+  }
+
+  function renderFootprint() {
+    if (!root) return;
+    const el = $('#fpStatus', root); if (!el) return;
+    const f = State.footprint || {};
+    const bits = [];
+    if (f.bookmarks) bits.push(`Bookmarks: ${f.bookmarks}`);
+    if (f.mutes) bits.push(`Unmuted: ${fmt(f.mutes)}`);
+    if (f.blocks) bits.push(`Unblocked: ${fmt(f.blocks)}`);
+    el.innerHTML = bits.length ? 'Cleared this session — ' + bits.join(' · ') : '';
   }
 
   function scrollToSection(id) {
@@ -1950,6 +2098,7 @@
     State.dmConvs = [];
     State.dmSelected = new Set();
     State.triage = { results: [], sel: new Set(), threshold: 40 };
+    State.footprint = {};
     // light up the AI badge if Chrome's on-device model is present
     getAIModel().then((lm) => {
       if (lm && root) { const b = $('#aiBadge', root); if (b) { b.textContent = 'AI ready'; const p = $('.panel', root); if (p) p.classList.add('ai-on'); } }

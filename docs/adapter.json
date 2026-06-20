@@ -6,6 +6,7 @@
   "queries": {
     "DeleteTweet": "VaenaVgh5q5ih7kvyVjgtg",
     "UnfavoriteTweet": "ZYKSe-w7KEslx3JhSIk5LA",
-    "DeleteRetweet": "iQtK4dl5hBmXewYZuEOKVw"
+    "DeleteRetweet": "iQtK4dl5hBmXewYZuEOKVw",
+    "BookmarksAllDelete": "Wlmlj2-xzyS1GN3a6cj-mQ"
   }
 }
