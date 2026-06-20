@@ -10,7 +10,7 @@
   'use strict';
   if (window.__xtracleanLoaded) return;
   window.__xtracleanLoaded = true;
-  const VERSION = '1.4.0';
+  const VERSION = '1.5.0';
   console.log('%c[XtraClean] v' + VERSION + ' content script loaded on ' + location.host, 'color:#2dd4bf');
 
   // --- X web app constants ---------------------------------------------------
@@ -744,6 +744,80 @@
   }
 
   // ===========================================================================
+  // LOCAL ARCHIVE — "own it, then erase it." Export a self-contained, searchable
+  // HTML copy of your history before deleting it from X. Opens offline forever.
+  // ===========================================================================
+  const ARCHIVE_CSS = `
+    :root{color-scheme:dark}
+    *{box-sizing:border-box;margin:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0a0e15;color:#e6edf3;line-height:1.5}
+    header{padding:28px 24px 14px;max-width:820px;margin:0 auto}
+    header h1{font-size:26px}header p{color:#8b95a5;font-size:13px;margin-top:4px}
+    .bar{position:sticky;top:0;background:#0a0e15;border-bottom:1px solid #232a36;padding:12px 24px;display:flex;gap:10px;flex-wrap:wrap;max-width:820px;margin:0 auto}
+    .bar input,.bar select{background:#0d1117;border:1px solid #2a3240;color:#e6edf3;border-radius:9px;padding:9px 11px;font-size:13px}
+    .bar input{flex:1;min-width:180px}
+    #wrap{max-width:820px;margin:0 auto;padding:16px 24px 60px}
+    #count{color:#8b95a5;font-size:12px;margin:6px 2px 12px}
+    .card{background:#0d1117;border:1px solid #232a36;border-radius:12px;padding:13px 15px;margin-bottom:10px}
+    .card .m{display:flex;gap:10px;align-items:center;font-size:11px;color:#8b95a5;margin-bottom:6px}
+    .card .tag{background:#1b2230;border-radius:10px;padding:2px 8px;color:#cdd6e0;text-transform:capitalize}
+    .card .lk{color:#7ee3c7}.card a{margin-left:auto;color:#2dd4bf;text-decoration:none}
+    .card .tx{white-space:pre-wrap;word-wrap:break-word;font-size:14px}
+    .more{color:#8b95a5;text-align:center;padding:14px;font-size:12px}
+  `;
+  // No template literals inside — this function is embedded verbatim via .toString().
+  function ARCHIVE_VIEWER() {
+    var data = JSON.parse(document.getElementById('data').textContent);
+    var list = document.getElementById('list'), q = document.getElementById('q'), sort = document.getElementById('sort'), ft = document.getElementById('ftype');
+    document.getElementById('meta').textContent = data.length + ' items · exported ' + new Date().toLocaleString();
+    function esc(s){ return (s||'').replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+    function render(){
+      var term=q.value.toLowerCase(), tf=ft.value;
+      var rows=data.filter(function(d){ return (!term||(d.text||'').toLowerCase().indexOf(term)>=0) && (tf==='all'||(tf==='like'?d.kind==='like':d.type===tf)); });
+      rows.sort(function(a,b){ return sort.value==='likes'?(b.likes-a.likes):sort.value==='old'?(new Date(a.date)-new Date(b.date)):(new Date(b.date)-new Date(a.date)); });
+      document.getElementById('count').textContent=rows.length+' shown';
+      list.innerHTML=rows.slice(0,5000).map(function(d){
+        var dt=d.date?new Date(d.date).toLocaleDateString():'';
+        var tag=d.kind==='like'?'♥ like':d.type;
+        return '<div class="card"><div class="m"><span class="tag">'+tag+'</span><span class="dt">'+dt+'</span>'+(d.likes?'<span class="lk">♥ '+d.likes+'</span>':'')+'<a href="'+d.url+'" target="_blank" rel="noopener">open ↗</a></div><div class="tx">'+esc(d.text||'(no text)')+'</div></div>';
+      }).join('')+(rows.length>5000?'<p class="more">Showing first 5000 of '+rows.length+'</p>':'');
+    }
+    q.addEventListener('input',render); sort.addEventListener('change',render); ft.addEventListener('change',render); render();
+  }
+  function buildArchiveHTML(handle, data) {
+    const json = JSON.stringify(data).replace(/</g, '\\u003c');
+    const h = escapeHtml('@' + handle);
+    return '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+      '<title>' + h + ' — XtraClean archive</title><style>' + ARCHIVE_CSS + '</style></head><body>' +
+      '<header><h1>' + h + '</h1><p id="meta"></p></header>' +
+      '<div class="bar"><input id="q" placeholder="Search your history…">' +
+      '<select id="sort"><option value="new">Newest</option><option value="old">Oldest</option><option value="likes">Most liked</option></select>' +
+      '<select id="ftype"><option value="all">All</option><option value="post">Posts</option><option value="reply">Replies</option><option value="repost">Reposts</option><option value="quote">Quotes</option><option value="like">Likes</option></select>' +
+      '</div><div id="wrap"><div id="count"></div><div id="list"></div></div>' +
+      '<script id="data" type="application/json">' + json + '<\/script>' +
+      '<script>(' + ARCHIVE_VIEWER.toString() + ')()<\/script></body></html>';
+  }
+  function downloadArchiveHTML() {
+    const items = State.items.length ? State.items : (State._matchedItems || []);
+    if (!items.length) { toast('Nothing to archive yet — scan or import first.', 'warn'); return; }
+    const handle = State.handle || 'you';
+    const data = items.map((i) => ({
+      id: i.id, kind: i.kind, type: i.type, date: i.time, text: i.text,
+      likes: i.likes || 0, rt: i.retweets || 0,
+      url: State.handle ? `https://x.com/${handle}/status/${i.id}` : `https://x.com/i/status/${i.id}`,
+    }));
+    const blob = new Blob([buildArchiveHTML(handle, data)], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `xtraclean-archive-${handle}-${Date.now()}.html`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toast(`Saved a searchable archive of ${fmt(items.length)} item(s).`, 'ok');
+    logLine(`Saved searchable .html archive (${fmt(items.length)} items).`, 'ok');
+  }
+
+  // ===========================================================================
   // AI TRIAGE — find the regrets, keep the gems. Runs 100% on your machine:
   // a transparent heuristic scorer everywhere, optionally refined by Chrome's
   // on-device model (Gemini Nano) when available. Nothing is sent anywhere.
@@ -1428,7 +1502,9 @@
         </div>
         <div class="row" style="margin-top:8px;">
           <button class="btn" id="backupBtn">⤓ Back up matched (.json)</button>
+          <button class="btn" id="archiveBtn">📦 Save archive (.html)</button>
         </div>
+        <div class="hint" style="margin-top:2px;">Archive saves a searchable copy of <b>everything you collected</b> — keep your memories, then erase them from X.</div>
       </div>
 
       <div class="sec">
@@ -1594,6 +1670,7 @@
 
     $('#applyBtn', root).onclick = () => applyFilters();
     $('#backupBtn', root).onclick = () => downloadBackup();
+    $('#archiveBtn', root).onclick = () => downloadArchiveHTML();
 
     $('#startBtn', root).onclick = () => {
       const matched = applyFilters();
