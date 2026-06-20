@@ -10,12 +10,12 @@
   'use strict';
   if (window.__xtracleanLoaded) return;
   window.__xtracleanLoaded = true;
-  const VERSION = '1.2.0';
+  const VERSION = '1.3.0';
   console.log('%c[XtraClean] v' + VERSION + ' content script loaded on ' + location.host, 'color:#2dd4bf');
 
   // --- X web app constants ---------------------------------------------------
   // The public web bearer token shipped in X's own JS bundle (not a secret).
-  const BEARER =
+  let BEARER =
     'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
   // Fallback query IDs. X rotates these, so at runtime we DISCOVER the current
   // ones from X's own JS bundle (see discoverQueryIds) and only fall back to
@@ -25,8 +25,42 @@
     UnfavoriteTweet: 'ZYKSe-w7KEslx3JhSIk5LA',
     DeleteRetweet: 'iQtK4dl5hBmXewYZuEOKVw',
   };
+
+  // Self-healing adapter: a tiny config hosted on our GitHub Pages. If X rotates
+  // endpoints or the bearer, we push a fix there and every user is healed within
+  // hours — no reinstall, no store review. Precedence: remote > live bundle > fallback.
+  const ADAPTER_URL = 'https://christopherlaughlin.github.io/xtraclean/adapter.json';
+  let remoteQueries = null; // {DeleteTweet,...} from the hosted config, if any
+  async function ensureAdapter() {
+    if (remoteQueries) return;
+    let cfg = null;
+    try {
+      const d = await chrome.storage.local.get('xtraclean_adapter');
+      const c = d.xtraclean_adapter;
+      if (c && Date.now() - c.at < 6 * 3600 * 1000) cfg = c.cfg; // 6h cache
+    } catch (e) {}
+    if (!cfg) {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 4000);
+        const r = await fetch(ADAPTER_URL, { credentials: 'omit', signal: ctrl.signal });
+        clearTimeout(t);
+        if (r.ok) { cfg = await r.json(); try { chrome.storage.local.set({ xtraclean_adapter: { at: Date.now(), cfg } }); } catch (e) {} }
+      } catch (e) {}
+    }
+    remoteQueries = (cfg && cfg.queries) || {};
+    if (cfg && cfg.bearer) BEARER = /^Bearer /.test(cfg.bearer) ? cfg.bearer : 'Bearer ' + cfg.bearer;
+  }
   let resolvedQueries = null; // populated by discoverQueryIds()
-  function activeQuery(op) { return (resolvedQueries && resolvedQueries[op]) || QUERY[op]; }
+  // precedence: live bundle (reads X's CURRENT code) > hosted adapter (our
+  // maintained safety net) > frozen fallback. discoverQueryIds records what it
+  // actually found live in resolvedQueries._discovered.
+  function activeQuery(op) {
+    const disc = resolvedQueries && resolvedQueries._discovered;
+    if (disc && disc[op]) return disc[op];
+    if (remoteQueries && remoteQueries[op]) return remoteQueries[op];
+    return QUERY[op];
+  }
 
   function extractQueryId(txt, op) {
     // X bundles list operations as {queryId:"X",operationName:"DeleteTweet",...}
@@ -727,11 +761,13 @@
     renderRun();
     persist();
 
-    // Resolve CURRENT query IDs from X's bundle so we don't hit stale-route 404s.
+    // Resolve CURRENT query IDs: hosted adapter first, then X's bundle, then fallback.
     logLine('Resolving X endpoints…');
+    await ensureAdapter();
     await discoverQueryIds();
     const disc = resolvedQueries._discovered || {};
-    const tag = (op) => `${op}=${activeQuery(op)}${disc[op] ? ' (live)' : ' (fallback)'}`;
+    const src = (op) => disc[op] ? 'live' : (remoteQueries && remoteQueries[op]) ? 'hosted' : 'fallback';
+    const tag = (op) => `${op}=${activeQuery(op)} (${src(op)})`;
     logLine(`${tag('DeleteTweet')}, ${tag('DeleteRetweet')}, ${tag('UnfavoriteTweet')}`);
     logLine(`Starting deletion of ${fmt(State.queue.length)} item(s)…`, 'ok');
 

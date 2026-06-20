@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "updated": "2026-06-21",
+  "note": "Self-healing config for XtraClean. If X rotates its web GraphQL query IDs or bearer token, update the values here and every installed copy heals within ~6 hours (no reinstall). Leave a value out to let the extension fall back to live bundle discovery.",
+  "bearer": "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
+  "queries": {
+    "DeleteTweet": "VaenaVgh5q5ih7kvyVjgtg",
+    "UnfavoriteTweet": "ZYKSe-w7KEslx3JhSIk5LA",
+    "DeleteRetweet": "iQtK4dl5hBmXewYZuEOKVw"
+  }
+}
