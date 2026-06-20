@@ -85,7 +85,7 @@ breakdown.
 2. Open the page with what you want to clean:
    - Your **Profile** → *Posts* or *Replies* tab, or
    - Your **Likes** page (`x.com/<you>/likes`).
-3. Click the **broom button** (bottom-right) to open the panel.
+3. Click the **XtraClean button** (bottom-right) to open the panel.
 4. **What to clean:** click **Scan this page** *(or* **Import archive** *and drop
    your `tweets.js` / `like.js`)*.
 5. **Filters:** pick types, dates, keywords, protections.

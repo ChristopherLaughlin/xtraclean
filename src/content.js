@@ -10,7 +10,7 @@
   'use strict';
   if (window.__xtracleanLoaded) return;
   window.__xtracleanLoaded = true;
-  const VERSION = '1.6.2';
+  const VERSION = '1.6.3';
   console.log('%c[XtraClean] v' + VERSION + ' content script loaded on ' + location.host, 'color:#2dd4bf');
 
   // --- X web app constants ---------------------------------------------------
@@ -1498,7 +1498,7 @@
     .ob h3{ margin:0 0 5px; font-size:13.5px;} .ob p{ margin:0; font-size:11px; color:#aab4c2; line-height:1.55;}
   `;
 
-  const BROOM_SVG = `<svg viewBox="0 0 24 24" fill="none"><path d="M19.5 3.5l-7 7M21 9l-6 6-3-3 6-6a2.12 2.12 0 013 3z" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 13l-6 6m3-3l-3 3m6-3l-2.5 2.5" stroke="white" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+  const FAB_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13M10 11v6M14 11v6"/></svg>`;
   const MARK_SVG = `<svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="#04201b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
   function buildUI() {
@@ -1512,7 +1512,7 @@
     const fab = document.createElement('button');
     fab.className = 'fab';
     fab.title = 'XtraClean — bulk-delete your X activity';
-    fab.innerHTML = BROOM_SVG;
+    fab.innerHTML = FAB_ICON_SVG;
     fab.setAttribute('aria-label', 'Open XtraClean');
     fab.onclick = togglePanel;
     root.appendChild(fab);
@@ -1520,7 +1520,7 @@
     // First-run coach bubble pointing at the FAB
     const coach = document.createElement('div');
     coach.className = 'coach hidden';
-    coach.innerHTML = '<span class="cx">×</span>👋 Clean your X is here<small>Click the broom to bulk-delete posts, likes &amp; DMs</small>';
+    coach.innerHTML = '<span class="cx">×</span>👋 Clean your X is here<small>Click to bulk-delete posts, likes &amp; DMs</small>';
     coach.onclick = () => { dismissCoach(); openPanel(); };
     root.appendChild(coach);
 
@@ -2158,7 +2158,7 @@
       if (d.xc_open_on_load) { chrome.storage.local.remove('xc_open_on_load'); openPanel(); }
     } catch (e) {}
 
-    // First run: draw attention to the broom. After they've opened it once, the
+    // First run: draw attention to the button. After they've opened it once, the
     // pulse + coach bubble never show again.
     try {
       const seen = await chrome.storage.local.get('xc_fab_seen');
