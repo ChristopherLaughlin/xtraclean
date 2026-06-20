@@ -8,7 +8,7 @@ Delete your **posts, replies, reposts, quotes, likes, and DMs** in bulk, straigh
 from your own browser. **Nothing ever leaves your machine** — no account, no
 servers, no subscription, no API key.
 
-**[⬇ Download the latest release](../../releases/latest)** · **[🌐 Website](https://USER.github.io/REPO/)** · **[🔒 Privacy](https://USER.github.io/REPO/privacy.html)**
+**[⬇ Download the latest release](../../releases/latest)** · **[🌐 Website](https://christopherlaughlin.github.io/xtraclean/)** · **[🔒 Privacy](https://christopherlaughlin.github.io/xtraclean/privacy.html)**
 
 </div>
 
