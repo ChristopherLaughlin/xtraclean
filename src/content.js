@@ -10,7 +10,7 @@
   'use strict';
   if (window.__xtracleanLoaded) return;
   window.__xtracleanLoaded = true;
-  const VERSION = '1.3.0';
+  const VERSION = '1.4.0';
   console.log('%c[XtraClean] v' + VERSION + ' content script loaded on ' + location.host, 'color:#2dd4bf');
 
   // --- X web app constants ---------------------------------------------------
@@ -744,6 +744,90 @@
   }
 
   // ===========================================================================
+  // AI TRIAGE — find the regrets, keep the gems. Runs 100% on your machine:
+  // a transparent heuristic scorer everywhere, optionally refined by Chrome's
+  // on-device model (Gemini Nano) when available. Nothing is sent anywhere.
+  // ===========================================================================
+  const RX = {
+    profanity: /\b(f+u+c+k+|sh[i1]t|b[i1]tch|assh[o0]le|c[u*]nt|dick|piss|bastard|wtf|stfu)\b/i,
+    hostile: /\b(idiot|stupid|moron|hate|kill|loser|trash|pathetic|shut ?up|dumb|clown|disgusting|worst)\b/i,
+    political: /\b(trump|biden|maga|liberal|conservative|democrat|republican|election|abortion|vaccine|covid|guns?|immigration|woke|nazi|fascist|antifa|palestin|israel)\b/i,
+    risky: /\b(drunk|wasted|hungover|high af|hate myself|depress|suicid|nsfw|nude|onlyfans|my address|my number)\b/i,
+  };
+  function scoreItem(it) {
+    const t = it.text || '';
+    const reasons = [];
+    let s = 0;
+    if (RX.profanity.test(t)) { s += 30; reasons.push('profanity'); }
+    if (RX.hostile.test(t)) { s += 28; reasons.push('hostile / insulting'); }
+    if (RX.political.test(t)) { s += 22; reasons.push('political / divisive'); }
+    if (RX.risky.test(t)) { s += 32; reasons.push('personal / risky'); }
+    const letters = t.replace(/[^a-zA-Z]/g, ''); const caps = t.replace(/[^A-Z]/g, '');
+    if (letters.length > 15 && caps.length / letters.length > 0.6) { s += 14; reasons.push('all-caps shouting'); }
+    if (it.time) { const h = new Date(it.time).getHours(); if (h <= 4) { s += 12; reasons.push('posted 12–4am'); } }
+    if ((it.likes || 0) > 0 && (it.replies || 0) > it.likes * 3) { s += 20; reasons.push('possibly ratio’d'); }
+    if ((it.likes || 0) === 0 && (it.retweets || 0) === 0 && it.type === 'post') { s += 8; reasons.push('no engagement'); }
+    if (((t.match(/@\w+/g) || []).length) >= 3) { s += 8; reasons.push('mention pile-on'); }
+    if (it.type === 'reply') { s += 4; }
+    return { score: Math.min(s, 100), reasons };
+  }
+
+  // Detect Chrome's on-device model across the API shapes it has shipped under.
+  async function getAIModel() {
+    try {
+      const LM = self.LanguageModel || (self.ai && self.ai.languageModel) || null;
+      if (!LM) return null;
+      let avail = null;
+      if (LM.availability) avail = await LM.availability();
+      else if (LM.capabilities) { const c = await LM.capabilities(); avail = c && (c.available === 'readily' ? 'available' : c.available); }
+      if (avail === 'unavailable' || avail === 'no') return null;
+      return LM;
+    } catch (e) { return null; }
+  }
+
+  async function aiRefine(top, onProgress) {
+    const LM = await getAIModel();
+    if (!LM) { toast('On-device AI not available — using the built-in scorer.', 'warn'); return false; }
+    let session;
+    try {
+      session = await LM.create({ initialPrompts: [{ role: 'system', content: 'You judge whether a past tweet could be embarrassing, offensive, or risky to keep public. Reply with ONLY compact JSON.' }] });
+    } catch (e) { toast('Couldn’t start on-device AI — using the built-in scorer.', 'warn'); return false; }
+    toast(`AI deep-scanning top ${top.length}…`);
+    for (let i = 0; i < top.length; i++) {
+      if (State.abort) break;
+      const r = top[i];
+      try {
+        const out = await session.prompt(`Rate 0-100 how risky/regrettable this tweet is to keep public, plus a 2-4 word reason.\nTweet: """${(r.it.text || '').slice(0, 480)}"""\nReply JSON only: {"score":<0-100>,"reason":"..."}`);
+        const m = out.match(/\{[\s\S]*?\}/);
+        if (m) { const j = JSON.parse(m[0]); if (typeof j.score === 'number') { r.score = Math.round(j.score); r.reasons = [String(j.reason || 'AI flagged').slice(0, 40)]; r.ai = true; } }
+      } catch (e) { /* keep heuristic score for this one */ }
+      onProgress?.(i + 1, top.length);
+    }
+    try { session.destroy && session.destroy(); } catch (e) {}
+    State.triage.results.sort((a, b) => b.score - a.score);
+    return true;
+  }
+
+  function runTriage() {
+    const tweets = State.items.filter((i) => i.kind === 'tweet');
+    if (!tweets.length) { toast('Scan or import your posts first.', 'warn'); switchView('clean'); scrollToSection('sec-source'); return; }
+    State.triage.results = tweets.map((it) => ({ it, ...scoreItem(it) })).sort((a, b) => b.score - a.score);
+    State.triage.sel = new Set(); // review-first: nothing pre-selected
+    renderTriage();
+    const flagged = State.triage.results.filter((r) => r.score >= State.triage.threshold).length;
+    toast(`Analyzed ${fmt(tweets.length)} posts — ${fmt(flagged)} flagged for review.`, 'ok');
+  }
+
+  function triageDeleteSelected() {
+    const ids = [...State.triage.sel];
+    if (!ids.length) { toast('Tick the posts you want gone first.', 'warn'); return; }
+    const byId = new Map(State.items.map((i) => [i.id, i]));
+    State._matchedItems = ids.map((id) => byId.get(id)).filter(Boolean);
+    State.queue = ids.slice();
+    if (confirm(`Delete ${ids.length} reviewed post(s)? This is permanent.`)) { switchView('clean'); runQueue(false); }
+  }
+
+  // ===========================================================================
   // QUEUE RUNNER — rate-limit aware, resumable
   // ===========================================================================
   async function runQueue(resuming = false) {
@@ -1192,6 +1276,16 @@
     .dmrow input{ accent-color:#2dd4bf; width:15px; height:15px;}
     .dmrow .nm{ flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
     .dmrow .dt{ font-size:10px; color:#7e8aa0;}
+    /* triage */
+    .trow{ display:flex; gap:9px; padding:9px 10px; border-bottom:1px solid #1a2130; font-size:12px; cursor:pointer; align-items:flex-start;}
+    .trow:last-child{ border-bottom:none;} .trow:hover{ background:#131a26;}
+    .trow input{ accent-color:#2dd4bf; width:15px; height:15px; margin-top:2px; flex:none;}
+    .trow .body{ flex:1; min-width:0;}
+    .trow .txt{ color:#cdd6e0; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+    .trow .why{ margin-top:4px; display:flex; flex-wrap:wrap; gap:4px;}
+    .trow .why span{ font-size:9.5px; color:#9aa6b6; background:#161c28; border:1px solid #2a3240; border-radius:10px; padding:1px 6px;}
+    .sbadge{ flex:none; width:34px; height:34px; border-radius:9px; display:grid; place-items:center; font-weight:800; font-size:13px; color:#fff;}
+    .ai-on #aiBadge{ background:rgba(139,92,246,.2); color:#c4b5fd; border:1px solid rgba(139,92,246,.4);}
     /* toast */
     #toast{ position:absolute; left:12px; right:12px; bottom:12px; display:flex; flex-direction:column; gap:6px; pointer-events:none; z-index:9;}
     .toast-item{ background:#1b2230; border:1px solid #2a3240; color:#e6edf3; border-radius:10px; padding:9px 12px; font-size:11.5px; opacity:0; transform:translateY(8px); transition:.25s; box-shadow:0 8px 20px rgba(0,0,0,.45);}
@@ -1247,7 +1341,8 @@
     </div>
     <div class="tabs" id="tabs">
       <button data-view="clean" class="on">Clean</button>
-      <button data-view="auto">Auto-Clean</button>
+      <button data-view="triage">Triage</button>
+      <button data-view="auto">Auto</button>
       <button data-view="dm">DMs</button>
     </div>
     <div class="body">
@@ -1358,6 +1453,27 @@
         <div class="log" id="log"></div>
       </div>
       </div><!-- /view-clean -->
+
+      <!-- ============================ TRIAGE VIEW ============================ -->
+      <div class="view" id="view-triage">
+        <div class="sec">
+          <div class="lbl">🧠 Smart triage <span class="n" id="aiBadge">heuristic</span></div>
+          <div class="hint">Finds your most likely-to-regret posts so you can review and delete just those — keeping the gems. Runs entirely on your machine. Scan or import your posts first (Clean tab).</div>
+          <div class="row" style="margin-top:10px;">
+            <button class="btn primary" id="triageRun">Analyze my posts</button>
+            <button class="btn" id="triageAI" style="flex:0 0 auto;" title="Refine top results with Chrome's on-device AI">🧠 AI</button>
+          </div>
+          <div class="two" style="margin-top:6px;align-items:center;">
+            <div><label class="f">Show score ≥ <b id="thVal">40</b></label>
+              <input type="range" id="thresh" min="10" max="90" step="5" value="40" style="width:100%;accent-color:#2dd4bf;"></div>
+            <div style="text-align:right;padding-top:14px;">
+              <button class="btn" id="triageAll" style="flex:0 0 auto;">Select all shown</button>
+            </div>
+          </div>
+          <div id="triageList" class="dmlist" style="max-height:300px;"><div class="hint" style="padding:12px;">No analysis yet — hit “Analyze my posts”.</div></div>
+          <button class="btn danger" id="triageDelete" style="margin-top:10px;width:100%;" disabled>Delete selected</button>
+        </div>
+      </div><!-- /view-triage -->
 
       <!-- ============================ AUTO-CLEAN VIEW ============================ -->
       <div class="view" id="view-auto">
@@ -1531,6 +1647,24 @@
     $('#dmAll', root).onclick = () => { State.dmSelected = new Set((State.dmConvs || []).map((c) => c.id)); renderDM(); };
     $('#dmNone', root).onclick = () => { State.dmSelected = new Set(); renderDM(); };
     $('#dmDelete', root).onclick = () => dmDeleteSelected();
+
+    // Triage controls
+    $('#triageRun', root).onclick = () => runTriage();
+    $('#thresh', root).addEventListener('input', (e) => { State.triage.threshold = parseInt(e.target.value, 10); $('#thVal', root).textContent = State.triage.threshold; renderTriage(); });
+    $('#triageAll', root).onclick = () => {
+      const shown = State.triage.results.filter((r) => r.score >= State.triage.threshold);
+      shown.forEach((r) => State.triage.sel.add(r.it.id));
+      renderTriage();
+    };
+    $('#triageDelete', root).onclick = () => triageDeleteSelected();
+    $('#triageAI', root).onclick = async () => {
+      if (!State.triage.results.length) { toast('Analyze first.', 'warn'); return; }
+      State.abort = false;
+      const top = State.triage.results.slice(0, 50);
+      const ok = await aiRefine(top, (i, n) => { const b = $('#triageAI', root); if (b) b.textContent = `🧠 ${i}/${n}`; });
+      const b = $('#triageAI', root); if (b) b.textContent = '🧠 AI';
+      if (ok) { toast('AI deep-scan complete.', 'ok'); renderTriage(); }
+    };
   }
 
   function switchView(name) {
@@ -1538,6 +1672,7 @@
     root.querySelectorAll('.view').forEach((v) => v.classList.toggle('on', v.id === 'view-' + name));
     if (name === 'auto') renderAutoClean();
     if (name === 'dm') renderDM();
+    if (name === 'triage') renderTriage();
   }
 
   function scrollToSection(id) {
@@ -1665,6 +1800,45 @@
     btn.textContent = n ? `Delete ${n} conversation(s)` : 'Delete selected';
   }
 
+  function scoreColor(s) {
+    if (s >= 70) return '#dc2626';
+    if (s >= 45) return '#d97706';
+    if (s >= 25) return '#ca8a04';
+    return '#4b5563';
+  }
+  function renderTriage() {
+    if (!root) return;
+    const list = $('#triageList', root); if (!list) return;
+    const results = State.triage.results || [];
+    const sel = State.triage.sel || (State.triage.sel = new Set());
+    const th = State.triage.threshold;
+    const shown = results.filter((r) => r.score >= th);
+    if (!results.length) {
+      list.innerHTML = '<div class="hint" style="padding:12px;">No analysis yet — hit “Analyze my posts”.</div>';
+    } else if (!shown.length) {
+      list.innerHTML = `<div class="hint" style="padding:12px;">Nothing scores ≥ ${th}. Lower the threshold, or your posts look clean ✨</div>`;
+    } else {
+      list.innerHTML = shown.slice(0, 300).map((r) => {
+        const d = r.it.time ? new Date(r.it.time).toLocaleDateString() : '';
+        const txt = escapeHtml((r.it.text || '(no text)').replace(/\n/g, ' ').slice(0, 180));
+        const why = r.reasons.map((x) => `<span>${escapeHtml(x)}</span>`).join('');
+        return `<label class="trow"><input type="checkbox" data-id="${escapeHtml(r.it.id)}" ${sel.has(r.it.id) ? 'checked' : ''}>
+          <div class="sbadge" style="background:${scoreColor(r.score)}">${r.score}</div>
+          <div class="body"><div class="txt">${txt}</div><div class="why">${why}${d ? `<span>${d}</span>` : ''}${r.ai ? '<span style="color:#c4b5fd">AI</span>' : ''}</div></div></label>`;
+      }).join('') + (shown.length > 300 ? `<div class="hint" style="padding:8px 10px;">Showing first 300 of ${fmt(shown.length)}.</div>` : '');
+      list.querySelectorAll('input[type=checkbox]').forEach((cb) => {
+        cb.onchange = () => { if (cb.checked) sel.add(cb.dataset.id); else sel.delete(cb.dataset.id); updateTriageBtn(); };
+      });
+    }
+    updateTriageBtn();
+  }
+  function updateTriageBtn() {
+    const btn = $('#triageDelete', root); if (!btn) return;
+    const n = (State.triage.sel || new Set()).size;
+    btn.disabled = !n;
+    btn.textContent = n ? `Delete ${n} selected post(s)` : 'Delete selected';
+  }
+
   function renderOnboard() {
     if (!root) return;
     const el = $('#onboard', root); if (!el) return;
@@ -1698,6 +1872,11 @@
     State.handle = detectHandle();
     State.dmConvs = [];
     State.dmSelected = new Set();
+    State.triage = { results: [], sel: new Set(), threshold: 40 };
+    // light up the AI badge if Chrome's on-device model is present
+    getAIModel().then((lm) => {
+      if (lm && root) { const b = $('#aiBadge', root); if (b) { b.textContent = 'AI ready'; const p = $('.panel', root); if (p) p.classList.add('ai-on'); } }
+    }).catch(() => {});
     let resumable = false;
     try { resumable = await loadPersisted(); } catch (e) { console.warn('[XtraClean] loadPersisted failed:', e); }
     syncSettingsToUI();
