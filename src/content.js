@@ -10,7 +10,7 @@
   'use strict';
   if (window.__xtracleanLoaded) return;
   window.__xtracleanLoaded = true;
-  const VERSION = '1.6.3';
+  const VERSION = '1.7.0';
   console.log('%c[XtraClean] v' + VERSION + ' content script loaded on ' + location.host, 'color:#2dd4bf');
 
   // --- X web app constants ---------------------------------------------------
@@ -1422,6 +1422,10 @@
     .chips{ display:flex; flex-wrap:wrap; gap:6px; }
     .chip{ display:flex;align-items:center;gap:5px; background:#161c28; border:1px solid #2a3240; border-radius:20px; padding:5px 10px; font-size:11.5px; cursor:pointer; user-select:none;}
     .chip.on{ background:rgba(45,212,191,.14); border-color:#2dd4bf; color:#7ee3c7;}
+    .adv-toggle{ width:100%; background:none; border:none; color:#8b95a5; font-size:11px; text-transform:uppercase; letter-spacing:.6px; font-weight:700; cursor:pointer; display:flex; align-items:center; padding:0;}
+    .adv-toggle:hover{ color:#cdd6e0;}
+    .adv-toggle .chev{ margin-left:auto; transition:transform .15s ease; font-size:10px;}
+    .adv-toggle.open .chev{ transform:rotate(90deg);}
     .preview{ background:#0a0e15; border:1px solid #2a3240; border-radius:10px; padding:10px; }
     .preview .big{ font-size:26px; font-weight:800; color:#fff; }
     .preview .big span{ font-size:13px; color:#8b95a5; font-weight:500; }
@@ -1553,8 +1557,6 @@
       <button data-view="fp">More</button>
     </div>
     <div class="body">
-      <div class="priv">🔒 100% local. Nothing leaves your browser — no servers, no account.</div>
-
       <!-- ============================ CLEAN VIEW ============================ -->
       <div class="view on" id="view-clean">
       <div id="onboard"></div>
@@ -1572,7 +1574,7 @@
       </div>
 
       <div class="sec" id="sec-source">
-        <div class="lbl">1 · What to clean</div>
+        <div class="lbl">What to clean</div>
         <div class="seg" id="srcSeg">
           <button data-src="live" class="on">Scan this page</button>
           <button data-src="archive">Import archive</button>
@@ -1592,56 +1594,55 @@
       </div>
 
       <div class="sec">
-        <div class="lbl">2 · Filters <span class="n" id="matchN">0</span></div>
-        <div class="chips" id="typeChips">
-          <span class="chip on" data-type="post">Posts</span>
-          <span class="chip on" data-type="reply">Replies</span>
-          <span class="chip on" data-type="repost">Reposts</span>
-          <span class="chip on" data-type="quote">Quotes</span>
-          <span class="chip on" data-kind="like">Likes</span>
-        </div>
-        <div class="two" style="margin-top:8px;">
-          <div><label class="f">From date</label><input type="date" id="dateFrom"></div>
-          <div><label class="f">To date</label><input type="date" id="dateTo"></div>
-        </div>
-        <label class="f">Contains text <span style="color:#6b7688">(optional)</span></label>
-        <input type="search" id="keyword" placeholder="word, phrase, or @handle">
-        <label class="chk" style="margin-top:6px;"><input type="checkbox" id="useRegex"> Treat as regular expression</label>
-        <div class="two" style="margin-top:6px;">
-          <div>
-            <label class="f">Keep posts with ≥ likes</label>
-            <input type="number" id="keepAbove" placeholder="e.g. 100" min="0">
+        <button class="adv-toggle" id="advToggle">Advanced filters<span class="chev" id="advChev">▸</span></button>
+        <div id="advBody" class="hidden" style="margin-top:10px;">
+          <div class="chips" id="typeChips">
+            <span class="chip on" data-type="post">Posts</span>
+            <span class="chip on" data-type="reply">Replies</span>
+            <span class="chip on" data-type="repost">Reposts</span>
+            <span class="chip on" data-type="quote">Quotes</span>
+            <span class="chip on" data-kind="like">Likes</span>
           </div>
-          <div>
-            <label class="f">Media</label>
-            <select id="mediaFilter" style="width:100%;background:#0a0e15;border:1px solid #2a3240;color:#e6edf3;border-radius:8px;padding:7px;font-size:12px;">
-              <option value="all">All</option>
-              <option value="only">With media only</option>
-              <option value="none">Text only</option>
-            </select>
+          <div class="two" style="margin-top:8px;">
+            <div><label class="f">From date</label><input type="date" id="dateFrom"></div>
+            <div><label class="f">To date</label><input type="date" id="dateTo"></div>
           </div>
+          <label class="f">Contains text <span style="color:#6b7688">(optional)</span></label>
+          <input type="search" id="keyword" placeholder="word, phrase, or @handle">
+          <label class="chk" style="margin-top:6px;"><input type="checkbox" id="useRegex"> Treat as regular expression</label>
+          <div class="two" style="margin-top:6px;">
+            <div>
+              <label class="f">Keep posts with ≥ likes</label>
+              <input type="number" id="keepAbove" placeholder="e.g. 100" min="0">
+            </div>
+            <div>
+              <label class="f">Media</label>
+              <select id="mediaFilter" style="width:100%;background:#0a0e15;border:1px solid #2a3240;color:#e6edf3;border-radius:8px;padding:7px;font-size:12px;">
+                <option value="all">All</option>
+                <option value="only">With media only</option>
+                <option value="none">Text only</option>
+              </select>
+            </div>
+          </div>
+          <label class="chk" style="margin-top:6px;"><input type="checkbox" id="protectPinned" checked> Protect my pinned post</label>
+          <label class="f">Never delete these IDs <span style="color:#6b7688">(comma-sep)</span></label>
+          <input type="text" id="protectIds" placeholder="1234567890, 9876543210">
+          <button class="btn" id="applyBtn" style="margin-top:10px;">Apply filters &amp; preview</button>
+          <button class="btn" id="backupBtn" style="margin-top:8px;">⤓ Export raw data (.json)</button>
         </div>
-        <label class="chk" style="margin-top:6px;"><input type="checkbox" id="protectPinned" checked> Protect my pinned post</label>
-        <label class="f">Never delete these IDs <span style="color:#6b7688">(comma-sep)</span></label>
-        <input type="text" id="protectIds" placeholder="1234567890, 9876543210">
-        <button class="btn" id="applyBtn" style="margin-top:10px;">Apply filters & preview</button>
       </div>
 
       <div class="sec" id="sec-preview">
-        <div class="lbl">3 · Preview</div>
+        <div class="lbl">Preview</div>
         <div class="preview">
-          <div class="big"><span id="matchBig">0</span> <span>item(s) match</span></div>
+          <div class="big"><span id="matchBig">0</span> <span>item(s) selected</span></div>
           <div class="sample" id="sample"></div>
         </div>
-        <div class="row" style="margin-top:8px;">
-          <button class="btn" id="backupBtn">⤓ Back up matched (.json)</button>
-          <button class="btn" id="archiveBtn">📦 Save archive (.html)</button>
-        </div>
-        <div class="hint" style="margin-top:2px;">Archive saves a searchable copy of <b>everything you collected</b> — keep your memories, then erase them from X.</div>
+        <button class="btn" id="archiveBtn" style="width:100%;margin-top:8px;">⤓ Back up first — searchable archive (.html)</button>
       </div>
 
       <div class="sec">
-        <div class="lbl">4 · Delete</div>
+        <div class="lbl">Delete</div>
         <label class="f">Speed — delay between deletions: <b id="delayVal">0.9s</b></label>
         <input type="range" id="delay" min="300" max="3000" step="100" value="900" style="width:100%; accent-color:#2dd4bf;">
         <div class="hint">Slower = safer against X's rate limits. XtraClean auto-pauses & resumes if X throttles you.</div>
@@ -1822,6 +1823,11 @@
     });
 
     $('#applyBtn', root).onclick = () => applyFilters();
+    $('#advToggle', root).onclick = () => {
+      const body = $('#advBody', root);
+      const open = !body.classList.toggle('hidden');
+      $('#advToggle', root).classList.toggle('open', open);
+    };
     $('#backupBtn', root).onclick = () => downloadBackup();
     $('#archiveBtn', root).onclick = () => downloadArchiveHTML();
 
@@ -1956,7 +1962,7 @@
   }
   function renderPreview(matched) {
     if (!root) return;
-    $('#matchN', root).textContent = fmt(matched.length);
+    const mn = $('#matchN', root); if (mn) mn.textContent = fmt(matched.length);
     $('#matchBig', root).textContent = fmt(matched.length);
     const s = $('#sample', root);
     s.innerHTML = matched.slice(0, 40).map((i) => {
