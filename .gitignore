@@ -1,0 +1,10 @@
+# Build output (zip is attached to GitHub Releases, not committed)
+dist/
+
+# Local tooling / preview config (machine-specific absolute paths)
+.claude/
+
+# OS / editor cruft
+.DS_Store
+node_modules/
+*.log

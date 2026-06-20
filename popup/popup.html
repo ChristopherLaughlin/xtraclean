@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>XtraClean</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      width: 320px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0d1117; color: #e6edf3; padding: 16px;
+    }
+    .top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .logo { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg,#2dd4bf,#8b5cf6); display:grid; place-items:center; flex:none;}
+    .logo svg { width: 22px; height: 22px; }
+    h1 { font-size: 16px; }
+    .tag { font-size: 11px; color: #8b95a5; margin-top: 1px; }
+    .priv { font-size: 11px; color: #7ee3c7; background: rgba(45,212,191,.08); border:1px solid rgba(45,212,191,.2); padding:8px 10px; border-radius:8px; margin-bottom:12px; line-height:1.4; }
+    ol { font-size: 12px; color:#c4cdd9; line-height:1.6; padding-left: 18px; margin-bottom: 12px;}
+    ol b { color:#fff; }
+    .cta { display:block; width:100%; text-align:center; text-decoration:none; background: linear-gradient(135deg,#2dd4bf,#14b8a6); color:#04201b; font-weight:700; padding:11px; border-radius:10px; font-size:13px;}
+    .cta:hover{ filter:brightness(1.08); }
+    .muted{ font-size:10.5px; color:#7e8aa0; text-align:center; margin-top:10px; line-height:1.5;}
+    .warn{ font-size:11px; color:#f0c674; margin-bottom:10px; display:none; }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="#04201b" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div>
+      <h1>XtraClean</h1>
+      <div class="tag">Bulk-delete your X activity, privately</div>
+    </div>
+  </div>
+
+  <div class="priv">🔒 Everything runs locally in your browser. Your posts, your session, your machine — nothing is ever uploaded.</div>
+
+  <div class="warn" id="warn">Open <b>x.com</b> in a tab to use XtraClean.</div>
+
+  <ol>
+    <li>Go to <b>x.com</b> and log in.</li>
+    <li>Open your <b>Profile</b> (Posts/Replies) or <b>Likes</b> page.</li>
+    <li>Click the <b>broom button</b> (bottom-right) to open the panel.</li>
+    <li>Scan or import your archive, set filters, preview, delete.</li>
+  </ol>
+
+  <a class="cta" id="open" href="https://x.com" target="_blank">Open X →</a>
+
+  <div class="muted">Free &amp; open. No account, no servers, no limits.<br/>Tip: back up matched items before deleting — deletions are permanent.</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>XtraClean — Bulk-delete your X / Twitter activity, privately</title>
+  <meta name="description" content="Free, local browser extension to bulk-delete your X/Twitter posts, replies, reposts, likes & DMs. Nothing leaves your browser." />
+  <style>
+    :root { --teal:#2dd4bf; --violet:#8b5cf6; --ink:#0a0e15; --panel:#0d1117; --line:#232a36; --text:#e6edf3; --muted:#8b95a5; }
+    * { box-sizing: border-box; margin: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--ink); color: var(--text); line-height: 1.6;
+      background-image: radial-gradient(1100px 500px at 80% -10%, #1d2740, var(--ink) 60%); }
+    .wrap { max-width: 1000px; margin: 0 auto; padding: 0 24px; }
+    header { display: flex; align-items: center; gap: 12px; padding: 22px 0; }
+    .logo { width: 40px; height: 40px; border-radius: 11px; background: linear-gradient(135deg, var(--teal), var(--violet)); display: grid; place-items: center; }
+    .logo svg { width: 24px; height: 24px; }
+    .brand { font-size: 20px; font-weight: 800; }
+    nav { margin-left: auto; display: flex; gap: 20px; font-size: 14px; }
+    nav a { color: var(--muted); text-decoration: none; } nav a:hover { color: var(--text); }
+    .hero { text-align: center; padding: 56px 0 40px; }
+    .hero h1 { font-size: 52px; line-height: 1.05; letter-spacing: -1px; font-weight: 800; }
+    .hero h1 .g { background: linear-gradient(135deg, var(--teal), var(--violet)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .hero p { font-size: 20px; color: #c4cdd9; max-width: 620px; margin: 18px auto 28px; }
+    .cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .btn { padding: 13px 24px; border-radius: 12px; font-weight: 700; font-size: 15px; text-decoration: none; display: inline-block; }
+    .btn.primary { background: linear-gradient(135deg, var(--teal), #14b8a6); color: #04201b; }
+    .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
+    .badges { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 26px; }
+    .badge { font-size: 13px; font-weight: 700; padding: 7px 13px; border-radius: 20px; background: rgba(45,212,191,.12); border: 1px solid rgba(45,212,191,.3); color: #7ee3c7; }
+    section { padding: 44px 0; }
+    h2 { font-size: 30px; text-align: center; margin-bottom: 28px; letter-spacing: -.5px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+    .card h3 { font-size: 17px; margin-bottom: 6px; }
+    .card p { font-size: 14px; color: var(--muted); }
+    .shots { display: grid; grid-template-columns: 1fr; gap: 18px; }
+    .shots img { width: 100%; border-radius: 14px; border: 1px solid var(--line); display: block; }
+    ol.steps { max-width: 640px; margin: 0 auto; font-size: 16px; color: #c4cdd9; line-height: 2; }
+    .note { max-width: 680px; margin: 0 auto; font-size: 13px; color: var(--muted); background: rgba(255,255,255,.03); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+    footer { text-align: center; color: var(--muted); font-size: 13px; padding: 40px 0; border-top: 1px solid var(--line); margin-top: 30px; }
+    code { background: #1b2230; padding: 2px 7px; border-radius: 5px; font-size: 13px; }
+    @media (max-width: 600px) { .hero h1 { font-size: 38px; } }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="#04201b" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="brand">XtraClean</div>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="privacy.html">Privacy</a>
+      <!-- Replace USER/REPO with your GitHub path -->
+      <a href="https://github.com/USER/REPO">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <h1>Wipe your X history.<br><span class="g">Privately. For free.</span></h1>
+    <p>Bulk-delete your X / Twitter posts, replies, reposts, likes, and DMs — straight from your own browser. No account, no servers, no subscription. Nothing ever leaves your machine.</p>
+    <div class="cta">
+      <!-- Replace USER/REPO with your GitHub path -->
+      <a class="btn primary" href="https://github.com/USER/REPO/releases/latest">Download latest</a>
+      <a class="btn ghost" href="#install">How to install</a>
+    </div>
+    <div class="badges">
+      <span class="badge">100% local</span><span class="badge">No account</span>
+      <span class="badge">Free &amp; open source</span><span class="badge">No data leaves your browser</span>
+    </div>
+  </div>
+
+  <section id="features">
+    <h2>Everything the paid tools do — without the catch</h2>
+    <div class="grid">
+      <div class="card"><h3>⚡ One-tap Quick Actions</h3><p>Delete all posts, unlike everything, "older than 30 days," or wipe everything — one click.</p></div>
+      <div class="card"><h3>🎛️ Powerful filters</h3><p>Date range, keyword/regex, type, media, and "keep anything with ≥ N likes."</p></div>
+      <div class="card"><h3>🤖 Auto-Clean</h3><p>Set a rule once — it sweeps old content automatically on a schedule.</p></div>
+      <div class="card"><h3>✉️ Direct Messages</h3><p>Scan your inbox and wipe whole conversations, 1:1 and group.</p></div>
+      <div class="card"><h3>⤓ Back up first</h3><p>Export exactly what's about to be deleted to JSON — no accidental loss.</p></div>
+      <div class="card"><h3>🔒 Truly private</h3><p>No backend exists. The only network calls are to X itself, in your session.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>See it</h2>
+    <div class="shots">
+      <img src="shots/screenshot-clean.png" alt="XtraClean Clean tab — quick actions and filters" />
+      <img src="shots/screenshot-auto.png" alt="XtraClean Auto-Clean tab" />
+      <img src="shots/screenshot-dm.png" alt="XtraClean Direct Messages tab" />
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>Install in 30 seconds</h2>
+    <ol class="steps">
+      <li>Download the latest <code>.zip</code> and unzip it.</li>
+      <li>Open <code>chrome://extensions</code> (Chrome / Edge / Brave / Arc).</li>
+      <li>Turn on <strong>Developer mode</strong> (top-right).</li>
+      <li>Click <strong>Load unpacked</strong> and pick the unzipped folder.</li>
+      <li>Go to <strong>x.com</strong>, open your profile, and click the broom button.</li>
+    </ol>
+    <p style="text-align:center; margin: 22px 0;"><a class="btn primary" href="https://github.com/USER/REPO/releases/latest">Download latest</a></p>
+    <p class="note">⚠️ Deletion is permanent and can't be undone by X — use the built-in backup if unsure. XtraClean is an independent tool, not affiliated with or endorsed by X Corp. Automating X may conflict with X's Terms of Service; use at your own discretion.</p>
+  </section>
+</div>
+
+<footer>
+  XtraClean · free &amp; open source · your data stays yours · <a href="privacy.html" style="color:var(--teal)">Privacy</a>
+</footer>
+</body>
+</html>
