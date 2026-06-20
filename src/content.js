@@ -10,7 +10,7 @@
   'use strict';
   if (window.__xtracleanLoaded) return;
   window.__xtracleanLoaded = true;
-  const VERSION = '1.6.1';
+  const VERSION = '1.6.2';
   console.log('%c[XtraClean] v' + VERSION + ' content script loaded on ' + location.host, 'color:#2dd4bf');
 
   // --- X web app constants ---------------------------------------------------
@@ -1357,14 +1357,30 @@
     :host { all: initial; }
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     .fab {
-      position: fixed; right: 20px; bottom: 20px; z-index: 2147483646;
-      width: 56px; height: 56px; border-radius: 16px; border: none; cursor: pointer;
-      background: linear-gradient(135deg,#0d1117,#1f1c3a); color:#fff;
-      box-shadow: 0 8px 24px rgba(0,0,0,.45); display:grid; place-items:center;
+      position: fixed; right: 22px; bottom: 22px; z-index: 2147483646;
+      width: 62px; height: 62px; border-radius: 18px; border: 2px solid rgba(255,255,255,.18); cursor: pointer;
+      background: linear-gradient(135deg,#2dd4bf,#8b5cf6); color:#fff;
+      box-shadow: 0 10px 30px rgba(0,0,0,.5), 0 0 22px rgba(45,212,191,.45);
+      display:grid; place-items:center;
       transition: transform .15s ease, box-shadow .15s ease;
     }
-    .fab:hover { transform: translateY(-2px) scale(1.04); box-shadow:0 12px 30px rgba(0,0,0,.55); }
-    .fab svg { width: 30px; height: 30px; }
+    .fab:hover { transform: translateY(-2px) scale(1.06); box-shadow:0 14px 36px rgba(0,0,0,.55), 0 0 30px rgba(139,92,246,.55); }
+    .fab svg { width: 32px; height: 32px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.4)); }
+    /* attention pulse until the user opens the panel once */
+    .fab::after { content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+      box-shadow:0 0 0 0 rgba(45,212,191,.55); animation:xcpulse 2s ease-out infinite; }
+    .fab.seen::after { animation:none; }
+    @keyframes xcpulse { 0%{box-shadow:0 0 0 0 rgba(45,212,191,.5)} 70%{box-shadow:0 0 0 18px rgba(45,212,191,0)} 100%{box-shadow:0 0 0 0 rgba(45,212,191,0)} }
+    /* first-run coach bubble pointing at the FAB */
+    .coach { position: fixed; right: 96px; bottom: 36px; z-index: 2147483646; max-width: 220px;
+      background:#0d1117; border:1px solid #2dd4bf; color:#e6edf3; padding:10px 13px; border-radius:13px;
+      font-size:13px; font-weight:600; line-height:1.35; box-shadow:0 10px 30px rgba(0,0,0,.55);
+      animation:xccoachin .45s cubic-bezier(.2,1.3,.5,1); cursor:pointer; }
+    .coach small { display:block; font-weight:500; color:#9aa6b6; font-size:11px; margin-top:2px; }
+    .coach::after { content:''; position:absolute; right:-8px; top:50%; transform:translateY(-50%);
+      border:8px solid transparent; border-left-color:#2dd4bf; }
+    .coach .cx { position:absolute; top:4px; right:7px; color:#6b7688; font-size:13px; }
+    @keyframes xccoachin { from{opacity:0; transform:translateX(10px) scale(.96)} to{opacity:1; transform:none} }
     .panel {
       position: fixed; right: 20px; bottom: 88px; z-index: 2147483647;
       width: 380px; max-height: 82vh; overflow:hidden; display:flex; flex-direction:column;
@@ -1495,10 +1511,18 @@
 
     const fab = document.createElement('button');
     fab.className = 'fab';
-    fab.title = 'XtraClean — bulk delete your X activity';
+    fab.title = 'XtraClean — bulk-delete your X activity';
     fab.innerHTML = BROOM_SVG;
+    fab.setAttribute('aria-label', 'Open XtraClean');
     fab.onclick = togglePanel;
     root.appendChild(fab);
+
+    // First-run coach bubble pointing at the FAB
+    const coach = document.createElement('div');
+    coach.className = 'coach hidden';
+    coach.innerHTML = '<span class="cx">×</span>👋 Clean your X is here<small>Click the broom to bulk-delete posts, likes &amp; DMs</small>';
+    coach.onclick = () => { dismissCoach(); openPanel(); };
+    root.appendChild(coach);
 
     const panel = document.createElement('div');
     panel.className = 'panel hidden';
@@ -2079,11 +2103,18 @@
     panelOpen = !panelOpen;
     $('.panel', root).classList.toggle('hidden', !panelOpen);
     if (panelOpen) {
+      markFabSeen();
       State.handle = detectHandle();
       $('#acct', root).innerHTML = State.handle ? `@${State.handle}` : 'No profile detected — open your profile';
     }
   }
   function openPanel() { if (!panelOpen) togglePanel(); }
+  function dismissCoach() { const c = $('.coach', root); if (c) c.classList.add('hidden'); }
+  function markFabSeen() {
+    dismissCoach();
+    const fab = $('.fab', root); if (fab) fab.classList.add('seen'); // stop the pulse
+    try { chrome.storage.local.set({ xc_fab_seen: true }); } catch (e) {}
+  }
 
   // ===========================================================================
   // BOOT
@@ -2125,6 +2156,14 @@
     try {
       const d = await chrome.storage.local.get('xc_open_on_load');
       if (d.xc_open_on_load) { chrome.storage.local.remove('xc_open_on_load'); openPanel(); }
+    } catch (e) {}
+
+    // First run: draw attention to the broom. After they've opened it once, the
+    // pulse + coach bubble never show again.
+    try {
+      const seen = await chrome.storage.local.get('xc_fab_seen');
+      if (seen.xc_fab_seen) { const fab = $('.fab', root); if (fab) fab.classList.add('seen'); }
+      else if (!panelOpen) { const c = $('.coach', root); if (c) { c.classList.remove('hidden'); setTimeout(dismissCoach, 9000); } }
     } catch (e) {}
 
     // Auto-Clean: run a sweep if a rule is enabled, due, and we're on the profile.
