@@ -10,7 +10,7 @@
   'use strict';
   if (window.__xtracleanLoaded) return;
   window.__xtracleanLoaded = true;
-  const VERSION = '1.6.0';
+  const VERSION = '1.6.1';
   console.log('%c[XtraClean] v' + VERSION + ' content script loaded on ' + location.host, 'color:#2dd4bf');
 
   // --- X web app constants ---------------------------------------------------
@@ -2083,6 +2083,7 @@
       $('#acct', root).innerHTML = State.handle ? `@${State.handle}` : 'No profile detected — open your profile';
     }
   }
+  function openPanel() { if (!panelOpen) togglePanel(); }
 
   // ===========================================================================
   // BOOT
@@ -2112,11 +2113,18 @@
       renderRun('⏸ Resume your previous job');
     }
 
-    // Background alarm can ask us to run an Auto-Clean sweep.
+    // Messages from the toolbar popup / background.
     try {
-      chrome.runtime.onMessage.addListener((msg) => {
+      chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+        if (msg?.type === 'XC_OPEN_PANEL') { openPanel(); sendResponse && sendResponse({ ok: true }); return true; }
         if (msg?.type === 'XC_AUTOCLEAN_RUN' && autoCleanDue()) runAutoClean({ silent: true });
       });
+    } catch (e) {}
+
+    // If the popup asked us to open (and had to reload the page to inject us), honor it now.
+    try {
+      const d = await chrome.storage.local.get('xc_open_on_load');
+      if (d.xc_open_on_load) { chrome.storage.local.remove('xc_open_on_load'); openPanel(); }
     } catch (e) {}
 
     // Auto-Clean: run a sweep if a rule is enabled, due, and we're on the profile.
