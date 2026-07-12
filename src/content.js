@@ -10,7 +10,7 @@
   'use strict';
   if (window.__xtracleanLoaded) return;
   window.__xtracleanLoaded = true;
-  const VERSION = '1.7.2';
+  const VERSION = '1.7.3';
   console.log('%c[XtraClean] v' + VERSION + ' content script loaded on ' + location.host, 'color:#2dd4bf');
 
   // --- X web app constants ---------------------------------------------------
@@ -602,6 +602,12 @@
     if (!isOwnProfilePage()) {
       logLine('You’re not on your own profile/Likes page — scanning here collects posts you can’t delete. Open x.com/<you> first.', 'warn');
       toast('Open your own Profile or Likes page before scanning.', 'warn');
+    }
+    // Likes live ONLY on the Likes page. If the user wants likes gone but is
+    // scanning their profile, they'll collect zero likes — call it out loudly.
+    if (!onLikes && Settings.deleteLikes) {
+      logLine('Heads up: this is your profile — it does NOT include your Likes. To remove likes, open your Likes page (x.com/you/likes) and scan there.', 'warn');
+      toast('To delete Likes, scan your Likes page — they’re not on your profile.', 'warn');
     }
     logLine(`Scanning ${onLikes ? 'Likes' : 'profile'} timeline…`);
     const me = (State.handle || detectHandle() || '').toLowerCase();
