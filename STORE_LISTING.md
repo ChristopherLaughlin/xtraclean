@@ -56,6 +56,10 @@ own browser session.
 - **host permission — abs.twimg.com**: Read X's public JavaScript bundle to
   resolve X's current API operation identifiers (which X rotates). Data is only
   read, never executed.
+- **host permission — christopherlaughlin.github.io**: Fetch a tiny public
+  configuration file (the current API operation identifiers) so the extension
+  keeps working when X changes its endpoints — no reinstall needed. Only a small
+  static JSON is read; no user data is ever sent.
 
 ## Data usage disclosures (check these in the dashboard)
 - Does your item collect user data? **No.**
