@@ -10,7 +10,7 @@
   'use strict';
   if (window.__xtracleanLoaded) return;
   window.__xtracleanLoaded = true;
-  const VERSION = '1.7.0';
+  const VERSION = '1.7.1';
   console.log('%c[XtraClean] v' + VERSION + ' content script loaded on ' + location.host, 'color:#2dd4bf');
 
   // --- X web app constants ---------------------------------------------------
@@ -1502,7 +1502,9 @@
     .ob h3{ margin:0 0 5px; font-size:13.5px;} .ob p{ margin:0; font-size:11px; color:#aab4c2; line-height:1.55;}
   `;
 
-  const FAB_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13M10 11v6M14 11v6"/></svg>`;
+  // The floating button is the XtraClean app launcher, so it wears the app mark
+  // (same gradient + checkmark used in the toolbar, store, and website).
+  const FAB_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   const MARK_SVG = `<svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="#04201b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
   function buildUI() {
