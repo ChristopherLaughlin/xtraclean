@@ -10,7 +10,7 @@
   'use strict';
   if (window.__xtracleanLoaded) return;
   window.__xtracleanLoaded = true;
-  const VERSION = '1.7.1';
+  const VERSION = '1.7.2';
   console.log('%c[XtraClean] v' + VERSION + ' content script loaded on ' + location.host, 'color:#2dd4bf');
 
   // --- X web app constants ---------------------------------------------------
@@ -207,16 +207,20 @@
 
     if (res.status === 429) return { state: 'rate', retry: rateReset(res) };
     if (res.status === 401 || res.status === 403) return { state: 'auth', msg: 'HTTP ' + res.status };
-    if (res.status === 404 && !body) return { state: 'fail', msg: 'Endpoint 404 — query ID for ' + op + ' is stale' };
+    // A 404 is an ENDPOINT problem (stale query ID), NOT a deleted item — even
+    // when X attaches an error body. Never let it look like success.
+    if (res.status === 404) return { state: 'fail', msg: 'Endpoint 404 — query ID for ' + op + ' is stale/unresolved' };
 
     const errs = body && body.errors;
     if (Array.isArray(errs) && errs.length) {
       const msg = errs.map((e) => e.message || ('code ' + e.code)).join('; ');
       if (errs.some((e) => e.code === 88) || /rate limit/i.test(msg)) return { state: 'rate', retry: nowSec() + 900 };
-      if (errs.some((e) => e.code === 32 || e.code === 89 || e.code === 215) || /authenticate|token|bad guest|transaction/i.test(msg))
+      if (errs.some((e) => e.code === 32 || e.code === 89 || e.code === 215) || /authenticate|token|bad guest|transaction|persistedquerynotfound|operation not found/i.test(msg))
         return { state: 'auth', msg };
       if (errs.some((e) => e.code === 183) || /another user'?s status|not delete another user/i.test(msg)) return { state: 'notmine', msg };
-      if (/not found|no status found|does not exist|already|not authorized to/i.test(msg)) return { state: 'gone', msg };
+      // "gone" = the item genuinely no longer exists. Keep this NARROW so a
+      // wrong-endpoint / wrong-id error is never mistaken for a success.
+      if (errs.some((e) => e.code === 144 || e.code === 34) || /no status found|does not exist|already unfavorited|already deleted/i.test(msg)) return { state: 'gone', msg };
       return { state: 'fail', msg };
     }
 
@@ -1038,6 +1042,7 @@
     logLine(`Starting deletion of ${fmt(State.queue.length)} item(s)…`, 'ok');
 
     const byId = new Map(State.items.map((i) => [i.id, i]));
+    const hadLikes = State.queue.some((id) => (byId.get(id) || {}).kind === 'like');
     let consecFail = 0; // stop pretending — bail out if X rejects everything
     let lastErr = '';
     if (State.progress.skipped == null) State.progress.skipped = 0;
@@ -1154,6 +1159,7 @@
         toast(`🎉 Deleted ${fmt(State.progress.done)} item(s). Your X is cleaner.`, 'ok');
         notify('XtraClean finished', `Deleted ${fmt(State.progress.done)} item(s) from @${State.handle || 'your account'}.`);
       }
+      if (hadLikes) logLine('Note: your unlikes are applied immediately, but X\'s Likes page is cached and may keep showing them for a while — that\'s X, not a failure.', 'warn');
     }
     persist();
     renderRun();
