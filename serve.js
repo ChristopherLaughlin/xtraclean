@@ -1,4 +1,5 @@
 // Minimal static file server for previewing docs/preview.html
+// Binds to loopback only: the /__save endpoint below is an unauthenticated write.
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -33,4 +34,4 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' });
     res.end(data);
   });
-}).listen(PORT, () => console.log('serving ' + ROOT + ' on http://localhost:' + PORT));
+}).listen(PORT, '127.0.0.1', () => console.log('serving ' + ROOT + ' on http://localhost:' + PORT));
