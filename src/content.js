@@ -32,6 +32,32 @@
   // hours — no reinstall, no store review. Precedence: remote > live bundle > fallback.
   const ADAPTER_URL = 'https://christopherlaughlin.github.io/xtraclean/adapter.json';
   let remoteQueries = null; // {DeleteTweet,...} from the hosted config, if any
+  // Remote/discovered values end up in the path and headers of credentialed
+  // requests to X, so they are strictly validated before use.
+  const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/; // query ids and operation names
+  const SAFE_BEARER = /^[A-Za-z0-9%]+$/;
+  const isSafeId = (v) => typeof v === 'string' && SAFE_ID.test(v);
+  // Returns { queries, bearer } if the hosted config is entirely well-formed,
+  // otherwise null (the whole adapter is ignored and built-in defaults apply).
+  function validateAdapter(cfg) {
+    if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return null;
+    const queries = {};
+    if (cfg.queries != null) {
+      if (typeof cfg.queries !== 'object' || Array.isArray(cfg.queries)) return null;
+      for (const op of Object.keys(cfg.queries)) {
+        if (!isSafeId(op) || !isSafeId(cfg.queries[op])) return null;
+        if (Object.prototype.hasOwnProperty.call(QUERY, op)) queries[op] = cfg.queries[op];
+      }
+    }
+    let bearer = null;
+    if (cfg.bearer != null) {
+      if (typeof cfg.bearer !== 'string') return null;
+      const token = cfg.bearer.replace(/^Bearer /, '');
+      if (!SAFE_BEARER.test(token)) return null;
+      bearer = 'Bearer ' + token;
+    }
+    return { queries, bearer };
+  }
   async function ensureAdapter() {
     if (remoteQueries) return;
     let cfg = null;
@@ -46,11 +72,18 @@
         const t = setTimeout(() => ctrl.abort(), 4000);
         const r = await fetch(ADAPTER_URL, { credentials: 'omit', signal: ctrl.signal });
         clearTimeout(t);
-        if (r.ok) { cfg = await r.json(); try { chrome.storage.local.set({ xtraclean_adapter: { at: Date.now(), cfg } }); } catch (e) {} }
+        if (r.ok) {
+          cfg = await r.json();
+          // Only cache a config that passes validation.
+          if (validateAdapter(cfg)) { try { chrome.storage.local.set({ xtraclean_adapter: { at: Date.now(), cfg } }); } catch (e) {} }
+        }
       } catch (e) {}
     }
-    remoteQueries = (cfg && cfg.queries) || {};
-    if (cfg && cfg.bearer) BEARER = /^Bearer /.test(cfg.bearer) ? cfg.bearer : 'Bearer ' + cfg.bearer;
+    // Validate on every load (the cached copy too). Anything malformed means
+    // the whole adapter is ignored: built-in query ids and bearer stay in use.
+    const safe = validateAdapter(cfg);
+    remoteQueries = safe ? safe.queries : {};
+    if (safe && safe.bearer) BEARER = safe.bearer;
   }
   let resolvedQueries = null; // populated by discoverQueryIds()
   // precedence: live bundle (reads X's CURRENT code) > hosted adapter (our
@@ -58,8 +91,8 @@
   // actually found live in resolvedQueries._discovered.
   function activeQuery(op) {
     const disc = resolvedQueries && resolvedQueries._discovered;
-    if (disc && disc[op]) return disc[op];
-    if (remoteQueries && remoteQueries[op]) return remoteQueries[op];
+    if (disc && isSafeId(disc[op])) return disc[op];
+    if (remoteQueries && isSafeId(remoteQueries[op])) return remoteQueries[op];
     return QUERY[op];
   }
 
@@ -70,7 +103,7 @@
       txt.match(new RegExp('queryId:"([a-zA-Z0-9_-]{8,})"[^}]{0,80}?operationName:"' + op + '"')) ||
       txt.match(new RegExp('operationName:"' + op + '"[^}]{0,200}?queryId:"([a-zA-Z0-9_-]{8,})"')) ||
       txt.match(new RegExp('"' + op + '"[^}]{0,200}?queryId:"([a-zA-Z0-9_-]{8,})"'));
-    return m ? m[1] : null;
+    return m && isSafeId(m[1]) ? m[1] : null;
   }
 
   async function discoverQueryIds(force = false) {
